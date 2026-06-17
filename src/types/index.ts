@@ -28,6 +28,7 @@ export interface ApprovalStep {
   id: string;
   bookingId: string;
   level: 1 | 2;
+  role: 'teacher' | 'admin';
   status: ApprovalStatus;
   approverId: string | null;
   comment: string;
@@ -55,10 +56,14 @@ export interface Booking {
   endSlot: TimeSlot;
   status: BookingStatus;
   purpose: string;
+  caseName: string;
   isMerged: boolean;
   mergedFromIds: string[];
   submittedBy: string;
   submittedAt: string;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  participants: number;
   approvalSteps: ApprovalStep[];
   overtimeRecords: OvertimeRecord[];
 }
@@ -68,8 +73,10 @@ export interface Recording {
   bookingId: string | null;
   classroomId: string;
   title: string;
+  caseName: string;
   videoUrl: string;
   recordedAt: string;
+  recordDate: string;
   duration: number;
   caseType: string;
 }

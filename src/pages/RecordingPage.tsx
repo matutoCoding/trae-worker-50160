@@ -19,10 +19,12 @@ export default function RecordingPage() {
 
   const filteredRecordings = recordings.filter((r) => {
     const booking = bookings.find((b) => b.id === r.bookingId);
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      r.caseName.includes(searchTerm) ||
-      (booking?.className || "").includes(searchTerm) ||
-      r.caseType.includes(searchTerm);
+      (r.title || "").toLowerCase().includes(searchLower) ||
+      (r.caseName || "").toLowerCase().includes(searchLower) ||
+      (booking?.className || "").toLowerCase().includes(searchLower) ||
+      (r.caseType || "").toLowerCase().includes(searchLower);
     const matchesType = caseTypeFilter === "all" || r.caseType === caseTypeFilter;
     return matchesSearch && matchesType;
   });
@@ -77,7 +79,7 @@ export default function RecordingPage() {
               <p className="text-2xl font-bold text-primary">
                 {recordings.filter((r) => {
                   const now = new Date();
-                  const recordDate = new Date(r.recordDate);
+                  const recordDate = new Date(r.recordedAt);
                   return (
                     recordDate.getMonth() === now.getMonth() &&
                     recordDate.getFullYear() === now.getFullYear()
@@ -110,7 +112,7 @@ export default function RecordingPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索案件名称..."
+              placeholder="搜索录像标题、案件类型..."
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

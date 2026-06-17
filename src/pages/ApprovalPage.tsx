@@ -10,7 +10,7 @@ export default function ApprovalPage() {
   const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
 
   const pendingBookings = bookings.filter(
-    (b) => b.status === "pending" && canApprove(b, currentUser!)
+    (b) => b.status === "pending" && canApprove(b, currentUser)
   );
 
   const approvedBookings = bookings.filter(

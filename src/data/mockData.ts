@@ -53,6 +53,11 @@ const dayAfter = addDays(today, 2);
 const threeDaysLater = addDays(today, 3);
 const yesterday = addDays(today, -1);
 
+function getSubmitter(userId: string): { id: string; name: string } {
+  const user = mockUsers.find((u) => u.id === userId);
+  return { id: userId, name: user?.name || '未知' };
+}
+
 function createApprovalSteps(
   bookingId: string,
   l1Status: 'pending' | 'approved' | 'rejected' | 'escalated' | 'overtime',
@@ -65,6 +70,7 @@ function createApprovalSteps(
       id: generateId(),
       bookingId,
       level: 1 as const,
+      role: 'teacher' as const,
       status: l1Status,
       approverId: l1Status === 'approved' || l1Status === 'rejected' ? 'tea-001' : null,
       comment: l1Status === 'approved' ? '同意，教学安排合理' : l1Status === 'rejected' ? '时段冲突，请调整' : '',
@@ -75,6 +81,7 @@ function createApprovalSteps(
       id: generateId(),
       bookingId,
       level: 2 as const,
+      role: 'admin' as const,
       status: l2Status,
       approverId: l2Status === 'approved' || l2Status === 'rejected' ? 'adm-001' : null,
       comment: l2Status === 'approved' ? '批准使用' : l2Status === 'rejected' ? '资源已被占用' : '',
@@ -84,154 +91,74 @@ function createApprovalSteps(
   ];
 }
 
+function createBooking(
+  classroomId: string,
+  className: string,
+  submitterId: string,
+  date: Date,
+  startSlot: TimeSlot,
+  endSlot: TimeSlot,
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed',
+  purpose: string,
+  l1Status: 'pending' | 'approved' | 'rejected' | 'escalated' | 'overtime',
+  l2Status: 'pending' | 'approved' | 'rejected' | 'escalated' | 'overtime',
+  hoursAgo: number = 0,
+  extraOvertime: boolean = false
+): Booking {
+  const id = generateId();
+  const submittedAt = subHours(new Date(), hoursAgo > 0 ? hoursAgo : 72).toISOString();
+  const submitter = getSubmitter(submitterId);
+  const slotCount = endSlot - startSlot + 1;
+  const mergedFromIds = slotCount > 1 ? Array.from({ length: slotCount }, () => generateId()) : [];
+
+  let approvalSteps = createApprovalSteps(id, l1Status, l2Status, hoursAgo);
+  const overtimeRecords = [];
+
+  if (extraOvertime) {
+    approvalSteps[0].deadline = subHours(new Date(), 2).toISOString();
+    overtimeRecords.push({
+      id: generateId(),
+      bookingId: id,
+      approvalLevel: 1 as const,
+      responsiblePersonId: 'tea-001',
+      overtimeAt: subHours(new Date(), 1).toISOString(),
+      escalationLevel: 2 as const,
+      notificationSent: true,
+      message: '审批已超时2小时，已自动升级至管理员审批',
+    });
+  }
+
+  return {
+    id,
+    classroomId,
+    className,
+    date: formatDate(date),
+    startSlot,
+    endSlot,
+    status,
+    purpose,
+    caseName: purpose,
+    isMerged: slotCount > 1,
+    mergedFromIds,
+    submittedBy: submitterId,
+    submittedAt,
+    createdBy: submitter,
+    createdAt: submittedAt,
+    participants: 30 + Math.floor(Math.random() * 20),
+    approvalSteps,
+    overtimeRecords,
+  };
+}
+
 export const mockBookings: Booking[] = [
-  {
-    id: generateId(),
-    classroomId: 'cr-001',
-    className: '法学2021级1班',
-    date: formatDate(today),
-    startSlot: 1,
-    endSlot: 3,
-    status: 'approved',
-    purpose: '民事诉讼法模拟庭审',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId(), generateId()],
-    submittedBy: 'stu-001',
-    submittedAt: subHours(new Date(), 72).toISOString(),
-    approvalSteps: createApprovalSteps('1', 'approved', 'approved', 48),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-001',
-    className: '法学2021级2班',
-    date: formatDate(today),
-    startSlot: 5,
-    endSlot: 6,
-    status: 'pending',
-    purpose: '刑法案例研讨',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId()],
-    submittedBy: 'stu-002',
-    submittedAt: subHours(new Date(), 12).toISOString(),
-    approvalSteps: createApprovalSteps('2', 'pending', 'pending', 12),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-002',
-    className: '法学2022级1班',
-    date: formatDate(tomorrow),
-    startSlot: 2,
-    endSlot: 4,
-    status: 'pending',
-    purpose: '行政诉讼法模拟庭审',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId(), generateId()],
-    submittedBy: 'stu-003',
-    submittedAt: subHours(new Date(), 2).toISOString(),
-    approvalSteps: createApprovalSteps('3', 'pending', 'pending', 2),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-003',
-    className: '法学2021级1班',
-    date: formatDate(dayAfter),
-    startSlot: 1,
-    endSlot: 2,
-    status: 'pending',
-    purpose: '国际经济法模拟仲裁',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId()],
-    submittedBy: 'stu-001',
-    submittedAt: subHours(new Date(), 36).toISOString(),
-    approvalSteps: (() => {
-      const steps = createApprovalSteps('4', 'pending', 'pending', 36);
-      steps[0].deadline = subHours(new Date(), 12).toISOString();
-      return steps;
-    })(),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-002',
-    className: '法学2021级2班',
-    date: formatDate(threeDaysLater),
-    startSlot: 3,
-    endSlot: 5,
-    status: 'approved',
-    purpose: '商法案例分析',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId(), generateId()],
-    submittedBy: 'stu-002',
-    submittedAt: subHours(new Date(), 96).toISOString(),
-    approvalSteps: createApprovalSteps('5', 'approved', 'approved', 72),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-001',
-    className: '法学2022级1班',
-    date: formatDate(yesterday),
-    startSlot: 4,
-    endSlot: 5,
-    status: 'completed',
-    purpose: '民法总论模拟庭审',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId()],
-    submittedBy: 'stu-003',
-    submittedAt: subHours(new Date(), 120).toISOString(),
-    approvalSteps: createApprovalSteps('6', 'approved', 'approved', 96),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-003',
-    className: '法学2021级1班',
-    date: formatDate(tomorrow),
-    startSlot: 6,
-    endSlot: 7,
-    status: 'rejected',
-    purpose: '劳动法模拟仲裁',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId()],
-    submittedBy: 'stu-001',
-    submittedAt: subHours(new Date(), 48).toISOString(),
-    approvalSteps: createApprovalSteps('7', 'rejected', 'pending', 24),
-    overtimeRecords: [],
-  },
-  {
-    id: generateId(),
-    classroomId: 'cr-001',
-    className: '法学2021级1班',
-    date: formatDate(dayAfter),
-    startSlot: 5,
-    endSlot: 7,
-    status: 'pending',
-    purpose: '知识产权法模拟庭审',
-    isMerged: true,
-    mergedFromIds: [generateId(), generateId(), generateId()],
-    submittedBy: 'stu-001',
-    submittedAt: subHours(new Date(), 4).toISOString(),
-    approvalSteps: (() => {
-      const steps = createApprovalSteps('8', 'overtime', 'pending', 4);
-      steps[0].deadline = subHours(new Date(), 2).toISOString();
-      return steps;
-    })(),
-    overtimeRecords: [
-      {
-        id: generateId(),
-        bookingId: 'overtime-demo',
-        approvalLevel: 1,
-        responsiblePersonId: 'tea-001',
-        overtimeAt: subHours(new Date(), 1).toISOString(),
-        escalationLevel: 2,
-        notificationSent: true,
-        message: '审批已超时2小时，已自动升级至管理员审批',
-      },
-    ],
-  },
+  createBooking('cr-001', '法学2021级1班', 'stu-001', today, 1, 3, 'approved', '民事诉讼法模拟庭审', 'approved', 'approved', 48),
+  createBooking('cr-001', '法学2021级2班', 'stu-002', today, 5, 6, 'pending', '刑法案例研讨', 'pending', 'pending', 12),
+  createBooking('cr-002', '法学2022级1班', 'stu-003', tomorrow, 2, 4, 'pending', '行政诉讼法模拟庭审', 'pending', 'pending', 2),
+  createBooking('cr-003', '法学2021级1班', 'stu-001', dayAfter, 1, 2, 'pending', '国际经济法模拟仲裁', 'pending', 'pending', 36),
+  createBooking('cr-002', '法学2021级2班', 'stu-002', threeDaysLater, 3, 5, 'approved', '商法案例分析', 'approved', 'approved', 72),
+  createBooking('cr-001', '法学2022级1班', 'stu-003', yesterday, 4, 5, 'completed', '民法总论模拟庭审', 'approved', 'approved', 96),
+  createBooking('cr-003', '法学2021级1班', 'stu-001', tomorrow, 6, 7, 'rejected', '劳动法模拟仲裁', 'rejected', 'pending', 24),
+  createBooking('cr-001', '法学2021级1班', 'stu-001', dayAfter, 5, 7, 'pending', '知识产权法模拟庭审', 'overtime', 'pending', 4, true),
 ];
 
 export const mockRecordings: Recording[] = [
@@ -240,8 +167,10 @@ export const mockRecordings: Recording[] = [
     bookingId: mockBookings[5].id,
     classroomId: 'cr-001',
     title: '民法总论模拟庭审 - 张三诉李四合同纠纷案',
+    caseName: '民法总论模拟庭审 - 张三诉李四合同纠纷案',
     videoUrl: '/recordings/demo1.mp4',
     recordedAt: subHours(new Date(), 20).toISOString(),
+    recordDate: formatDate(subHours(new Date(), 20)),
     duration: 180,
     caseType: '民事',
   },
@@ -250,8 +179,10 @@ export const mockRecordings: Recording[] = [
     bookingId: null,
     classroomId: 'cr-003',
     title: '2024年度校级模拟法庭大赛决赛',
+    caseName: '2024年度校级模拟法庭大赛决赛',
     videoUrl: '/recordings/demo2.mp4',
     recordedAt: subHours(new Date(), 168).toISOString(),
+    recordDate: formatDate(subHours(new Date(), 168)),
     duration: 240,
     caseType: '刑事',
   },
@@ -260,8 +191,10 @@ export const mockRecordings: Recording[] = [
     bookingId: null,
     classroomId: 'cr-002',
     title: '行政诉讼法教学录像 - 行政复议程序',
+    caseName: '行政诉讼法教学录像 - 行政复议程序',
     videoUrl: '/recordings/demo3.mp4',
     recordedAt: subHours(new Date(), 336).toISOString(),
+    recordDate: formatDate(subHours(new Date(), 336)),
     duration: 120,
     caseType: '行政',
   },
@@ -270,8 +203,10 @@ export const mockRecordings: Recording[] = [
     bookingId: mockBookings[0].id,
     classroomId: 'cr-001',
     title: '民事诉讼法模拟庭审 - 王五诉赵六侵权案',
+    caseName: '民事诉讼法模拟庭审 - 王五诉赵六侵权案',
     videoUrl: '/recordings/demo4.mp4',
     recordedAt: subHours(new Date(), 4).toISOString(),
+    recordDate: formatDate(subHours(new Date(), 4)),
     duration: 270,
     caseType: '民事',
   },

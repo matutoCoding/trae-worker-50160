@@ -1,6 +1,7 @@
-import { Booking, TimeSlot, CreateBookingParams } from '@/types';
+import { Booking, TimeSlot, CreateBookingParams, User } from '@/types';
 import { generateId, generateApprovalDeadline, formatDate } from './time';
 import { ApprovalStep } from '@/types';
+import { mockUsers } from '@/data/mockData';
 
 function groupSlotsToRanges(slots: TimeSlot[]): { start: TimeSlot; end: TimeSlot }[] {
   if (slots.length === 0) return [];
@@ -21,6 +22,11 @@ function groupSlotsToRanges(slots: TimeSlot[]): { start: TimeSlot; end: TimeSlot
   }
   ranges.push({ start: currentStart, end: currentEnd });
   return ranges;
+}
+
+function getSubmitter(userId: string): { id: string; name: string } {
+  const user = mockUsers.find((u) => u.id === userId);
+  return { id: userId, name: user?.name || '未知' };
 }
 
 export function mergeAdjacentBookings(bookings: Omit<Booking, 'id'>[]): Booking[] {
@@ -104,9 +110,10 @@ export function splitBookingOnCancel(
         id: generateId(),
         bookingId: newId,
         level: 1,
+        role: 'teacher',
         status: booking.approvalSteps[0]?.status || 'pending',
         approverId: booking.approvalSteps[0]?.approverId || null,
-        comment: '',
+        comment: booking.approvalSteps[0]?.comment || '',
         deadline: baseDeadline,
         processedAt: booking.approvalSteps[0]?.processedAt || null,
       },
@@ -114,9 +121,10 @@ export function splitBookingOnCancel(
         id: generateId(),
         bookingId: newId,
         level: 2,
+        role: 'admin',
         status: booking.approvalSteps[1]?.status || 'pending',
         approverId: booking.approvalSteps[1]?.approverId || null,
-        comment: '',
+        comment: booking.approvalSteps[1]?.comment || '',
         deadline: level2Deadline,
         processedAt: booking.approvalSteps[1]?.processedAt || null,
       },
@@ -140,6 +148,7 @@ export function createBookingsFromParams(params: CreateBookingParams): Booking[]
   const now = new Date().toISOString();
   const baseDeadline = generateApprovalDeadline(24);
   const level2Deadline = generateApprovalDeadline(48);
+  const submitter = getSubmitter(params.submittedBy);
   
   const bookingTemplates: Omit<Booking, 'id'>[] = ranges.map((range) => {
     const bookingId = generateId();
@@ -151,15 +160,20 @@ export function createBookingsFromParams(params: CreateBookingParams): Booking[]
       endSlot: range.end,
       status: 'pending',
       purpose: params.purpose,
+      caseName: params.purpose,
       isMerged: false,
       mergedFromIds: [],
       submittedBy: params.submittedBy,
       submittedAt: now,
+      createdBy: submitter,
+      createdAt: now,
+      participants: 30,
       approvalSteps: [
         {
           id: generateId(),
           bookingId,
           level: 1,
+          role: 'teacher',
           status: 'pending',
           approverId: null,
           comment: '',
@@ -170,6 +184,7 @@ export function createBookingsFromParams(params: CreateBookingParams): Booking[]
           id: generateId(),
           bookingId,
           level: 2,
+          role: 'admin',
           status: 'pending',
           approverId: null,
           comment: '',

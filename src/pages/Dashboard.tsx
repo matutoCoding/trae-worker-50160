@@ -38,14 +38,14 @@ export default function Dashboard() {
     },
     {
       title: "超时未处理",
-      value: stats.overdue,
+      value: stats.overtime,
       icon: AlertTriangle,
       color: "bg-red-600",
     },
   ];
 
   const recentBookings = [...bookings]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => new Date(b.submittedAt || b.createdAt).getTime() - new Date(a.submittedAt || a.createdAt).getTime())
     .slice(0, 5);
 
   const getStatusBadge = (status: string) => {
@@ -130,7 +130,7 @@ export default function Dashboard() {
                         <Video className="w-5 h-5 text-primary" />
                       </div>
                       <div>
-                        <p className="font-medium text-primary">{booking.caseName}</p>
+                        <p className="font-medium text-primary">{booking.purpose || booking.caseName || booking.className}</p>
                         <p className="text-sm text-gray-500">
                           {classroom?.name} · {booking.className} · {booking.date}
                         </p>

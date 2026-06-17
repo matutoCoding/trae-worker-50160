@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Users, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Users, MapPin, Plus } from 'lucide-react';
 import { format, addWeeks, startOfWeek, isSameDay } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { useAppStore } from '@/store';
 import { TIME_SLOT_CONFIG, type TimeSlot, type Booking } from '@/types';
 import { formatDate, formatDateDisplay, getWeekDates } from '@/utils/time';
-import { Badge, StatusBadge, MergedBadge } from '@/components/ui/Badge';
+import { StatusBadge, MergedBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 
@@ -14,7 +14,7 @@ export function WeeklySchedule() {
   const [hoveredBooking, setHoveredBooking] = useState<Booking | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
-  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingPurpose, setBookingPurpose] = useState('');
 
   const bookings = useAppStore((s) => s.bookings);
   const classrooms = useAppStore((s) => s.classrooms);
@@ -27,7 +27,7 @@ export function WeeklySchedule() {
   const checkConflict = useAppStore((s) => s.checkConflict);
 
   const weekDates = getWeekDates(currentWeek);
-  const timeSlots = Object.entries(TIME_SLOT_CONFIG) as [TimeSlot, typeof TIME_SLOT_CONFIG[TimeSlot]][];
+  const timeSlots = Object.entries(TIME_SLOT_CONFIG) as unknown as [TimeSlot, typeof TIME_SLOT_CONFIG[TimeSlot]][];
 
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
@@ -105,14 +105,27 @@ export function WeeklySchedule() {
       return;
     }
 
+    if (!bookingPurpose.trim()) {
+      alert('请填写使用用途');
+      return;
+    }
+
     createBooking({
       classroomId: selectedClassroom,
       className: currentUser.department,
       date: formatDate(selectedDate),
       slots: bookingSlots,
-      purpose: '模拟庭审练习',
+      purpose: bookingPurpose.trim(),
       submittedBy: currentUser.id,
     });
+
+    setBookingPurpose('');
+  }
+
+  function handleOpenBookingModal() {
+    setSelectedClassroom(classrooms[0]?.id || null);
+    setBookingPurpose('');
+    setBookingModalOpen(true);
   }
 
   return (
@@ -125,8 +138,9 @@ export function WeeklySchedule() {
               variant="ghost"
               size="sm"
               onClick={() => setCurrentWeek(addWeeks(currentWeek, -1))}
-              leftIcon={<ChevronLeft className="w-4 h-4" />}
-            />
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
             <span className="font-medium text-primary-700 min-w-[200px] text-center">
               {format(currentWeek, 'yyyy年M月d日', { locale: zhCN })} -{' '}
               {format(addWeeks(currentWeek, 1), 'M月d日', { locale: zhCN })}
@@ -135,8 +149,9 @@ export function WeeklySchedule() {
               variant="ghost"
               size="sm"
               onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
-              rightIcon={<ChevronRight className="w-4 h-4" />}
-            />
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
@@ -154,13 +169,8 @@ export function WeeklySchedule() {
             ))}
           </select>
           {currentUser?.role === 'student' && (
-            <Button
-              onClick={() => {
-                setSelectedClassroom(classrooms[0]?.id || null);
-                setBookingModalOpen(true);
-              }}
-              leftIcon={<Clock className="w-4 h-4" />}
-            >
+            <Button onClick={handleOpenBookingModal}>
+              <Plus className="w-4 h-4 mr-1" />
               新建预约
             </Button>
           )}
@@ -384,6 +394,8 @@ export function WeeklySchedule() {
               type="text"
               placeholder="请输入使用用途，如：民事诉讼法模拟庭审"
               className="input-field"
+              value={bookingPurpose}
+              onChange={(e) => setBookingPurpose(e.target.value)}
             />
           </div>
 

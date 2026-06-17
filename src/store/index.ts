@@ -15,7 +15,7 @@ import {
   splitBookingOnCancel,
   checkSlotsConflict,
 } from '@/utils/merge';
-import { processApprovalStep } from '@/utils/approval';
+import { processApprovalStep, getCurrentApprovalStep } from '@/utils/approval';
 import { checkAndProcessOvertime, simulateTimePass } from '@/utils/overtime';
 import { mockClassrooms, mockBookings, mockRecordings, mockUsers } from '@/data/mockData';
 
@@ -45,7 +45,6 @@ interface AppState {
   cancelBooking: (params: CancelBookingParams) => Booking[];
 
   processApproval: (
-    stepId: string,
     bookingId: string,
     status: 'approved' | 'rejected',
     comment: string
@@ -112,8 +111,9 @@ export const useAppStore = create<AppState>()(
         });
         return newBookings;
       },
-      cancelBooking: ({ bookingId, cancelSlots }) => {
+      cancelBooking: (params) => {
         const state = get();
+        const { bookingId, cancelSlots } = params || {};
         const booking = state.bookings.find((b) => b.id === bookingId);
         if (!booking) return [];
 
@@ -132,15 +132,21 @@ export const useAppStore = create<AppState>()(
         return splitBookings;
       },
 
-      processApproval: (stepId, bookingId, status, comment) => {
+      processApproval: (bookingId, status, comment) => {
         const state = get();
         const approver = state.currentUser;
         if (!approver) return;
 
+        const booking = state.bookings.find((b) => b.id === bookingId);
+        if (!booking) return;
+
+        const currentStep = getCurrentApprovalStep(booking);
+        if (!currentStep) return;
+
         set((state) => ({
           bookings: state.bookings.map((b) =>
             b.id === bookingId
-              ? processApprovalStep(b, stepId, status, approver.id, comment)
+              ? processApprovalStep(b, currentStep.id, status, approver.id, comment)
               : b
           ),
         }));

@@ -128,7 +128,7 @@ export default function OvertimeList() {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <h4 className="font-semibold text-primary font-serif">
-                            {booking.caseName}
+                            {booking.purpose || booking.caseName || booking.className}
                           </h4>
                           <p className="text-sm text-gray-600">{booking.className}</p>
                         </div>

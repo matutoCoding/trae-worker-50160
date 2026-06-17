@@ -3,7 +3,7 @@ import { Clock, MapPin, User, Calendar, Check, X, ChevronDown, ChevronUp, AlertT
 import type { Booking } from '@/types';
 import { TIME_SLOT_CONFIG } from '@/types';
 import { useAppStore } from '@/store';
-import { formatSlotRange, isOverdue as checkIsOverdue } from '@/utils/time';
+import { formatSlotRange, isOverdue as checkIsOverdue, formatDateTime } from '@/utils/time';
 import { getCurrentApprovalStep, canApprove } from '@/utils/approval';
 import { StatusBadge, MergedBadge, OvertimeBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -21,16 +21,16 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
   const { classrooms, users, currentUser, processApproval } = useAppStore();
 
   const classroom = classrooms.find((c) => c.id === booking.classroomId);
-  const submitter = users.find((u) => u.id === booking.createdBy.id);
+  const submitter = users.find((u) => u.id === booking.submittedBy) || { name: booking.createdBy?.name || '未知' };
   const currentStep = getCurrentApprovalStep(booking);
 
   const canApproveThis = currentUser && currentStep
-    ? canApprove(booking, currentUser!)
+    ? canApprove(booking, currentUser)
     : false;
 
   const isOverdue = currentStep?.deadline ? checkIsOverdue(currentStep.deadline) : false;
   const overdueHours = currentStep?.deadline 
-    ? Math.floor((new Date().getTime() - new Date(currentStep.deadline).getTime()) / (1000 * 60 * 60)) 
+    ? Math.max(0, Math.floor((new Date().getTime() - new Date(currentStep.deadline).getTime()) / (1000 * 60 * 60))) 
     : 0;
 
   const highestEscalation = Math.max(
@@ -57,10 +57,6 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
     return users.find((u) => u.id === approverId)?.name || '未知';
   }
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('zh-CN');
-  };
-
   return (
     <>
       <div className="card p-4 animate-fade-in">
@@ -68,7 +64,7 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <h4 className="font-semibold text-primary font-serif">
-                {booking.caseName}
+                {booking.purpose || booking.caseName || '未命名预约'}
               </h4>
               <StatusBadge status={booking.status} />
               {booking.isMerged && (
@@ -92,7 +88,7 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
         <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-primary" />
-            {classroom?.name}
+            {classroom?.name || '未知教室'}
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-primary" />
@@ -104,7 +100,7 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
           </div>
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-primary" />
-            {submitter?.name}
+            {submitter?.name || '未知申请人'}
           </div>
         </div>
 
@@ -170,7 +166,7 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
                     )}
                     {step.processedAt && (
                       <div className="text-xs text-gray-400 mt-1">
-                        {formatDate(step.processedAt)}
+                        {formatDateTime(step.processedAt)}
                       </div>
                     )}
                   </div>
@@ -186,7 +182,7 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
                     <div className="font-medium">超时催办 - 级别 {record.escalationLevel}</div>
                     <div className="text-xs text-red-500">{record.message}</div>
                     <div className="text-xs text-gray-400 mt-1">
-                      责任人：{responsible} · {formatDate(record.overtimeAt)}
+                      责任人：{responsible} · {formatDateTime(record.overtimeAt)}
                     </div>
                   </div>
                 </div>
@@ -205,8 +201,8 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-500">案件名称</label>
-              <p className="font-medium">{booking.caseName}</p>
+              <label className="block text-sm font-medium text-gray-500">案件/用途</label>
+              <p className="font-medium">{booking.purpose || booking.caseName || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请班级</label>
@@ -214,11 +210,11 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请人</label>
-              <p className="font-medium">{submitter?.name}</p>
+              <p className="font-medium">{submitter?.name || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">使用教室</label>
-              <p className="font-medium">{classroom?.name}</p>
+              <p className="font-medium">{classroom?.name || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">使用日期</label>
@@ -232,17 +228,17 @@ export default function ApprovalCard({ booking }: ApprovalCardProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请时间</label>
-              <p className="font-medium">{formatDate(booking.createdAt)}</p>
+              <p className="font-medium">{formatDateTime(booking.submittedAt || booking.createdAt)}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">参与人数</label>
-              <p className="font-medium">{booking.participants}人</p>
+              <p className="font-medium">{booking.participants || 30}人</p>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-500">使用用途</label>
-            <p className="font-medium">{booking.purpose}</p>
+            <p className="font-medium">{booking.purpose || '-'}</p>
           </div>
 
           <div className="p-4 bg-gray-50 rounded-lg">

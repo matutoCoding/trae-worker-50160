@@ -140,9 +140,12 @@ export function AddRecordingButton() {
       alert('请填写录像标题');
       return;
     }
+    const now = new Date();
     addRecording({
       ...form,
-      recordedAt: new Date().toISOString(),
+      caseName: form.title,
+      recordedAt: now.toISOString(),
+      recordDate: formatDateDisplay(now),
       bookingId: form.bookingId || null,
     });
     setShowModal(false);

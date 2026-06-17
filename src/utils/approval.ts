@@ -1,26 +1,26 @@
-import { Booking, ApprovalStep, OvertimeRecord, UserRole } from '@/types';
+import { Booking, ApprovalStep, OvertimeRecord, UserRole, User } from '@/types';
 import { generateId, generateApprovalDeadline } from './time';
 
 export function canApprove(
   booking: Booking,
-  userRole: UserRole,
-  userId: string
+  user: User | null
 ): boolean {
+  if (!user) return false;
   if (booking.status !== 'pending') return false;
   
   const currentStep = getCurrentApprovalStep(booking);
   if (!currentStep) return false;
   
-  if (currentStep.status !== 'pending' && currentStep.status !== 'overtime') {
+  if (currentStep.status !== 'pending' && currentStep.status !== 'overtime' && currentStep.status !== 'escalated') {
     return false;
   }
   
   if (currentStep.level === 1) {
-    return userRole === 'teacher' || userRole === 'admin';
+    return user.role === 'teacher' || user.role === 'admin';
   }
   
   if (currentStep.level === 2) {
-    return userRole === 'admin';
+    return user.role === 'admin';
   }
   
   return false;

@@ -3,7 +3,7 @@ import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap } from 'lucide-re
 import type { Booking, TimeSlot } from '@/types';
 import { TIME_SLOT_CONFIG } from '@/types';
 import { useAppStore } from '@/store';
-import { formatSlotRange, getSlotRange } from '@/utils/time';
+import { formatSlotRange, getSlotRange, formatDateTime } from '@/utils/time';
 import { getCurrentApprovalStep } from '@/utils/approval';
 import { StatusBadge, MergedBadge, OvertimeBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -20,10 +20,10 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
   const [showSplitPreview, setShowSplitPreview] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
 
-  const { classrooms, users, cancelBooking, currentUser, simulateTimePass } = useAppStore();
+  const { classrooms, users, cancelBooking, currentUser, simulateBookingOvertime } = useAppStore();
 
   const classroom = classrooms.find((c) => c.id === booking.classroomId);
-  const submitter = users.find((u) => u.id === booking.createdBy.id);
+  const submitter = users.find((u) => u.id === booking.submittedBy) || { name: booking.createdBy?.name || '未知' };
   const currentStep = getCurrentApprovalStep(booking);
   const allSlots = getSlotRange(booking.startSlot, booking.endSlot);
 
@@ -34,10 +34,10 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
   ) as 1 | 2 | 3 | 0;
 
   function handleCancel() {
-    cancelBooking(
-      booking.id,
-      cancelSlots.length > 0 ? cancelSlots : undefined
-    );
+    cancelBooking({
+      bookingId: booking.id,
+      cancelSlots: cancelSlots.length > 0 ? cancelSlots : undefined,
+    });
     setShowCancelModal(false);
     setCancelSlots([]);
   }
@@ -56,10 +56,6 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
     completed: 'border-blue-300 bg-blue-50',
   }[booking.status];
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('zh-CN');
-  };
-
   return (
     <>
       <div
@@ -71,7 +67,7 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
           <div className={`${viewMode === 'list' ? 'flex-1' : ''}`}>
             <div className="flex items-center gap-2 mb-2">
               <h4 className="font-semibold text-primary font-serif">
-                {booking.caseName}
+                {booking.purpose || booking.caseName || '未命名预约'}
               </h4>
               <StatusBadge status={booking.status} />
               {booking.isMerged && <MergedBadge />}
@@ -85,7 +81,7 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
           <div className={`grid ${viewMode === 'list' ? 'grid-cols-4 flex-1' : 'grid-cols-2'} gap-2 text-sm text-gray-600 my-3`}>
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-primary" />
-              {classroom?.name}
+              {classroom?.name || '未知教室'}
             </div>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-primary" />
@@ -97,7 +93,7 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
             </div>
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-primary" />
-              {submitter?.name}
+              {submitter?.name || '未知申请人'}
             </div>
           </div>
         </div>
@@ -165,7 +161,7 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
             <Button
               variant="danger"
               size="sm"
-              onClick={() => simulateTimePass(booking.id, 5)}
+              onClick={() => simulateBookingOvertime(booking.id, 5)}
             >
               <Zap className="w-4 h-4 mr-1" />
               模拟超时
@@ -254,8 +250,8 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-500">案件名称</label>
-              <p className="font-medium">{booking.caseName}</p>
+              <label className="block text-sm font-medium text-gray-500">案件/用途</label>
+              <p className="font-medium">{booking.purpose || booking.caseName || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请班级</label>
@@ -263,11 +259,11 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请人</label>
-              <p className="font-medium">{submitter?.name}</p>
+              <p className="font-medium">{submitter?.name || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">使用教室</label>
-              <p className="font-medium">{classroom?.name}</p>
+              <p className="font-medium">{classroom?.name || '-'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">使用日期</label>
@@ -281,17 +277,17 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">申请时间</label>
-              <p className="font-medium">{formatDate(booking.createdAt)}</p>
+              <p className="font-medium">{formatDateTime(booking.submittedAt || booking.createdAt)}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-500">参与人数</label>
-              <p className="font-medium">{booking.participants}人</p>
+              <p className="font-medium">{booking.participants || 30}人</p>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-500">使用用途</label>
-            <p className="font-medium">{booking.purpose}</p>
+            <p className="font-medium">{booking.purpose || '-'}</p>
           </div>
 
           {currentStep && (

@@ -21,15 +21,20 @@ export default function BookingListPage() {
 
   const filteredBookings = bookings.filter((booking) => {
     const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      booking.caseName.includes(searchTerm) ||
-      booking.className.includes(searchTerm) ||
-      booking.createdBy.name.includes(searchTerm);
+      (booking.purpose || "").toLowerCase().includes(searchLower) ||
+      (booking.caseName || "").toLowerCase().includes(searchLower) ||
+      (booking.className || "").toLowerCase().includes(searchLower) ||
+      (booking.createdBy?.name || "").toLowerCase().includes(searchLower) ||
+      (booking.submittedBy || "").toLowerCase().includes(searchLower);
     return matchesStatus && matchesSearch;
   });
 
   const sortedBookings = [...filteredBookings].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) =>
+      new Date(b.submittedAt || b.createdAt).getTime() -
+      new Date(a.submittedAt || a.createdAt).getTime()
   );
 
   return (
@@ -67,7 +72,7 @@ export default function BookingListPage() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="搜索案件名称、班级..."
+                placeholder="搜索用途、班级、申请人..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
