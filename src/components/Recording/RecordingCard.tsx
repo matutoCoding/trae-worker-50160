@@ -152,7 +152,53 @@ export function AddRecordingButton() {
   }
 
   const availableBookings = bookings.filter(
-    (b) => b.status === 'completed' && b.classroomId === form.classroomId
+    (b) => (b.status === 'completed' || b.status === 'approved') && b.classroomId === form.classroomId
+  );
+
+  const CASE_TYPE_MAP: Array<{ keyword: string; type: string }> = [
+    { keyword: '民事', type: '民事' },
+    { keyword: '刑事', type: '刑事' },
+    { keyword: '行政', type: '行政' },
+    { keyword: '商法', type: '商事' },
+    { keyword: '知识产权', type: '知识产权' },
+    { keyword: '劳动', type: '劳动' },
+    { keyword: '仲裁', type: '民事' },
+    { keyword: '合同', type: '民事' },
+    { keyword: '侵权', type: '民事' },
+    { keyword: '国际', type: '国际私法' },
+  ];
+
+  function inferCaseType(text: string): string {
+    for (const { keyword, type } of CASE_TYPE_MAP) {
+      if (text.includes(keyword)) {
+        return type;
+      }
+    }
+    return '民事';
+  }
+
+  function handleBookingChange(bookingId: string) {
+    if (!bookingId) {
+      setForm({ ...form, bookingId: '' });
+      return;
+    }
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (booking) {
+      const suggestedTitle = `${booking.purpose || booking.caseName || ''} - ${booking.className}`;
+      const caseText = booking.purpose || booking.caseName || '';
+      const suggestedCaseType = inferCaseType(caseText);
+      setForm({
+        ...form,
+        bookingId,
+        classroomId: booking.classroomId,
+        title: suggestedTitle,
+        caseType: suggestedCaseType,
+      });
+    }
+  }
+
+  const allBookings = bookings.filter(
+    (b) => b.status === 'completed' || b.status === 'approved'
   );
 
   return (
@@ -223,13 +269,13 @@ export function AddRecordingButton() {
               <label className="block text-sm font-medium text-gray-700 mb-1">关联预约</label>
               <select
                 value={form.bookingId}
-                onChange={(e) => setForm({ ...form, bookingId: e.target.value })}
+                onChange={(e) => handleBookingChange(e.target.value)}
                 className="input-field"
               >
-                <option value="">不关联</option>
-                {availableBookings.map((b) => (
+                <option value="">不关联预约</option>
+                {allBookings.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.className} - {formatDateDisplay(b.date)}
+                    {b.purpose || b.caseName} - {b.className} ({b.date})
                   </option>
                 ))}
               </select>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap } from 'lucide-react';
+import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap, CheckSquare, Square, Video, Play } from 'lucide-react';
 import type { Booking, TimeSlot } from '@/types';
 import { TIME_SLOT_CONFIG } from '@/types';
 import { useAppStore } from '@/store';
@@ -12,15 +12,24 @@ import { Modal } from '@/components/ui/Modal';
 interface BookingCardProps {
   booking: Booking;
   viewMode?: 'grid' | 'list';
+  selectable?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardProps) {
+export default function BookingCard({ 
+  booking, 
+  viewMode = 'grid',
+  selectable = false,
+  isSelected = false,
+  onToggleSelect,
+}: BookingCardProps) {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelSlots, setCancelSlots] = useState<TimeSlot[]>([]);
   const [showSplitPreview, setShowSplitPreview] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
 
-  const { classrooms, users, cancelBooking, currentUser, simulateBookingOvertime } = useAppStore();
+  const { classrooms, users, cancelBooking, currentUser, simulateBookingOvertime, recordings } = useAppStore();
 
   const classroom = classrooms.find((c) => c.id === booking.classroomId);
   const submitter = users.find((u) => u.id === booking.submittedBy) || { name: booking.createdBy?.name || '未知' };
@@ -61,8 +70,28 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
       <div
         className={`card border-l-4 ${statusColor} p-4 transition-all duration-300 hover:shadow-lg ${
           viewMode === 'list' ? 'flex items-center gap-4' : ''
-        }`}
+        } ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
       >
+        {selectable && (
+          <div
+            className="flex-shrink-0 mr-3 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (booking.status !== 'cancelled' && booking.status !== 'rejected') {
+                onToggleSelect?.(booking.id);
+              }
+            }}
+          >
+            {booking.status === 'cancelled' || booking.status === 'rejected' ? (
+              <Square className="w-5 h-5 text-gray-300" />
+            ) : isSelected ? (
+              <CheckSquare className="w-5 h-5 text-primary" />
+            ) : (
+              <Square className="w-5 h-5 text-gray-400" />
+            )}
+          </div>
+        )}
+
         <div className={`flex-1 ${viewMode === 'list' ? 'flex items-center gap-4' : ''}`}>
           <div className={`${viewMode === 'list' ? 'flex-1' : ''}`}>
             <div className="flex items-center gap-2 mb-2">
@@ -299,6 +328,36 @@ export default function BookingCard({ booking, viewMode = 'grid' }: BookingCardP
                   <span className="text-red-500 ml-2">（已超时）</span>
                 )}
               </p>
+            </div>
+          )}
+
+          {recordings.filter((r) => r.bookingId === booking.id).length > 0 && (
+            <div className="p-4 bg-sky-50 rounded-lg border border-sky-100">
+              <h5 className="font-medium text-sky-800 mb-3 flex items-center gap-2">
+                <Video className="w-4 h-4" />
+                关联庭审录像
+              </h5>
+              <div className="space-y-2">
+                {recordings
+                  .filter((r) => r.bookingId === booking.id)
+                  .map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="flex items-center justify-between p-2 bg-white rounded border border-sky-100"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-sky-900">{rec.title}</p>
+                        <p className="text-xs text-sky-600">
+                          {rec.caseType} · {Math.floor(rec.duration / 60)}小时{rec.duration % 60}分钟
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm">
+                        <Play className="w-4 h-4 mr-1" />
+                        查看
+                      </Button>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
 

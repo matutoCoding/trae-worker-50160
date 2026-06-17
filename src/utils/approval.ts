@@ -16,7 +16,7 @@ export function canApprove(
   }
   
   if (currentStep.level === 1) {
-    return user.role === 'teacher' || user.role === 'admin';
+    return user.role === 'teacher';
   }
   
   if (currentStep.level === 2) {
@@ -29,7 +29,14 @@ export function canApprove(
 export function getCurrentApprovalStep(booking: Booking): ApprovalStep | null {
   const sorted = [...booking.approvalSteps].sort((a, b) => a.level - b.level);
   for (const step of sorted) {
-    if (step.status === 'pending' || step.status === 'overtime' || step.status === 'escalated') {
+    if (step.status === 'pending' || step.status === 'overtime') {
+      return step;
+    }
+    if (step.status === 'escalated') {
+      const nextStep = sorted.find((s) => s.level === step.level + 1);
+      if (nextStep && (nextStep.status === 'pending' || nextStep.status === 'overtime')) {
+        return nextStep;
+      }
       return step;
     }
   }

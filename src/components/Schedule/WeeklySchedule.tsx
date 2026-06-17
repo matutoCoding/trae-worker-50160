@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Users, MapPin, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Users, MapPin, Plus, BarChart3, CheckCircle, Clock3 } from 'lucide-react';
 import { format, addWeeks, startOfWeek, isSameDay } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { useAppStore } from '@/store';
-import { TIME_SLOT_CONFIG, type TimeSlot, type Booking } from '@/types';
-import { formatDate, formatDateDisplay, getWeekDates } from '@/utils/time';
+import { TIME_SLOT_CONFIG, type TimeSlot, type Booking, type Classroom } from '@/types';
+import { formatDate, formatDateDisplay, getWeekDates, getSlotDurationMinutes } from '@/utils/time';
 import { StatusBadge, MergedBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -36,6 +36,54 @@ export function WeeklySchedule() {
       return true;
     });
   }, [bookings, selectedClassroom]);
+
+  const weekStats = useMemo(() => {
+    const weekDateStrs = weekDates.map((d) => formatDate(d));
+    const totalSlotsPerWeek = 7 * 7; // 7天 × 7时段
+
+    return classrooms.map((classroom) => {
+      const classroomBookings = bookings.filter((b) => {
+        if (b.classroomId !== classroom.id) return false;
+        if (!weekDateStrs.includes(b.date)) return false;
+        if (b.status === 'cancelled' || b.status === 'rejected') return false;
+        return true;
+      });
+
+      let approvedMinutes = 0;
+      let pendingMinutes = 0;
+
+      classroomBookings.forEach((b) => {
+        const minutes = getSlotDurationMinutes(b.startSlot, b.endSlot);
+        if (b.status === 'approved' || b.status === 'completed') {
+          approvedMinutes += minutes;
+        } else if (b.status === 'pending') {
+          pendingMinutes += minutes;
+        }
+      });
+
+      const totalMinutes = totalSlotsPerWeek * 90;
+      const usedMinutes = approvedMinutes + pendingMinutes;
+      const freeMinutes = Math.max(0, totalMinutes - usedMinutes);
+      const utilizationRate = totalMinutes > 0 ? (usedMinutes / totalMinutes) * 100 : 0;
+
+      return {
+        classroom,
+        approvedMinutes,
+        pendingMinutes,
+        freeMinutes,
+        utilizationRate,
+        bookingCount: classroomBookings.length,
+      };
+    });
+  }, [classrooms, bookings, weekDates]);
+
+  function formatMinutes(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}分钟`;
+    if (mins === 0) return `${hours}小时`;
+    return `${hours}小时${mins}分钟`;
+  }
 
   function getBookingsForCell(date: Date, slot: TimeSlot): Booking[] {
     const dateStr = formatDate(date);
@@ -189,6 +237,69 @@ export function WeeklySchedule() {
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-sky-100 border border-sky-300" />
           已完成
+        </div>
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-primary font-serif">本周资源利用概览</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {weekStats.map((stat) => (
+            <div
+              key={stat.classroom.id}
+              onClick={() => setSelectedClassroom(
+                selectedClassroom === stat.classroom.id ? null : stat.classroom.id
+              )}
+              className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md ${
+                selectedClassroom === stat.classroom.id
+                  ? 'border-primary bg-primary/5'
+                  : 'border-gray-100 bg-white hover:border-primary/30'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h4 className="font-semibold text-primary font-serif">{stat.classroom.name}</h4>
+                  <p className="text-xs text-gray-500">{stat.classroom.capacity}座 · {stat.bookingCount}个预约</p>
+                </div>
+                <div className={`text-lg font-bold ${
+                  stat.utilizationRate > 60 ? 'text-emerald-600' :
+                  stat.utilizationRate > 30 ? 'text-amber-600' : 'text-gray-500'
+                }`}>
+                  {stat.utilizationRate.toFixed(0)}%
+                </div>
+              </div>
+              
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                  style={{ width: `${(stat.approvedMinutes / (7 * 7 * 90)) * 100}%` }}
+                />
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500 -mt-2"
+                  style={{ 
+                    width: `${(stat.pendingMinutes / (7 * 7 * 90)) * 100}%`,
+                    marginLeft: `${(stat.approvedMinutes / (7 * 7 * 90)) * 100}%`
+                  }}
+                />
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3 text-emerald-500" />
+                  <span className="text-gray-600">{formatMinutes(stat.approvedMinutes)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Clock3 className="w-3 h-3 text-amber-500" />
+                  <span className="text-gray-600">{formatMinutes(stat.pendingMinutes)}</span>
+                </div>
+                <div className="text-gray-400 text-right">
+                  空闲 {formatMinutes(stat.freeMinutes)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

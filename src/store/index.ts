@@ -43,6 +43,7 @@ interface AppState {
 
   createBooking: (params: CreateBookingParams) => Booking[];
   cancelBooking: (params: CancelBookingParams) => Booking[];
+  batchCancelBookings: (bookingIds: string[], reason?: string) => void;
 
   processApproval: (
     bookingId: string,
@@ -130,6 +131,16 @@ export const useAppStore = create<AppState>()(
         const otherBookings = state.bookings.filter((b) => b.id !== bookingId);
         set({ bookings: [...otherBookings, ...splitBookings] });
         return splitBookings;
+      },
+
+      batchCancelBookings: (bookingIds, reason) => {
+        set((state) => ({
+          bookings: state.bookings.map((b) =>
+            bookingIds.includes(b.id) && b.status !== 'cancelled' && b.status !== 'rejected'
+              ? { ...b, status: 'cancelled' }
+              : b
+          ),
+        }));
       },
 
       processApproval: (bookingId, status, comment) => {
