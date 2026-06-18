@@ -60,6 +60,9 @@ export function processApprovalStep(
 ): Booking {
   const now = new Date().toISOString();
   
+  const targetStep = booking.approvalSteps.find((s) => s.id === stepId);
+  if (!targetStep) return booking;
+  
   const updatedSteps = booking.approvalSteps.map((step) => {
     if (step.id === stepId) {
       return {
@@ -70,6 +73,25 @@ export function processApprovalStep(
         processedAt: now,
       };
     }
+    if (targetStep.status === 'escalated' && step.level === targetStep.level + 1 && step.status === 'pending') {
+      if (status === 'approved') {
+        return {
+          ...step,
+          status: 'approved' as const,
+          approverId,
+          comment,
+          processedAt: now,
+        };
+      } else {
+        return {
+          ...step,
+          status: 'rejected' as const,
+          approverId,
+          comment,
+          processedAt: now,
+        };
+      }
+    }
     return step;
   });
   
@@ -77,7 +99,9 @@ export function processApprovalStep(
   if (status === 'rejected') {
     bookingStatus = 'rejected';
   } else {
-    const allApproved = updatedSteps.every((s) => s.status === 'approved');
+    const allApproved = updatedSteps.every(
+      (s) => s.status === 'approved' || s.status === 'escalated'
+    );
     if (allApproved) {
       bookingStatus = 'approved';
     }

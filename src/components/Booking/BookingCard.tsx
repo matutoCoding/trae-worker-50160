@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap, CheckSquare, Square, Video, Play } from 'lucide-react';
-import type { Booking, TimeSlot } from '@/types';
+import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap, CheckSquare, Square, Video, Play, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import type { Booking, TimeSlot, Recording } from '@/types';
 import { TIME_SLOT_CONFIG } from '@/types';
 import { useAppStore } from '@/store';
 import { formatSlotRange, getSlotRange, formatDateTime } from '@/utils/time';
@@ -28,7 +29,9 @@ export default function BookingCard({
   const [cancelSlots, setCancelSlots] = useState<TimeSlot[]>([]);
   const [showSplitPreview, setShowSplitPreview] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
 
+  const navigate = useNavigate();
   const { classrooms, users, cancelBooking, currentUser, simulateBookingOvertime, recordings } = useAppStore();
 
   const classroom = classrooms.find((c) => c.id === booking.classroomId);
@@ -336,6 +339,13 @@ export default function BookingCard({
               <h5 className="font-medium text-sky-800 mb-3 flex items-center gap-2">
                 <Video className="w-4 h-4" />
                 关联庭审录像
+                <button
+                  onClick={() => navigate('/recordings')}
+                  className="ml-auto text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1"
+                >
+                  去录像页
+                  <ExternalLink className="w-3 h-3" />
+                </button>
               </h5>
               <div className="space-y-2">
                 {recordings
@@ -349,12 +359,22 @@ export default function BookingCard({
                         <p className="text-sm font-medium text-sky-900">{rec.title}</p>
                         <p className="text-xs text-sky-600">
                           {rec.caseType} · {Math.floor(rec.duration / 60)}小时{rec.duration % 60}分钟
+                          {rec.recordDate && ` · ${rec.recordDate}`}
                         </p>
                       </div>
-                      <Button variant="ghost" size="sm">
-                        <Play className="w-4 h-4 mr-1" />
-                        查看
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedRecording(rec)}>
+                          <Play className="w-4 h-4 mr-1" />
+                          详情
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate('/recordings')}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
               </div>
@@ -367,6 +387,61 @@ export default function BookingCard({
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!selectedRecording}
+        onClose={() => setSelectedRecording(null)}
+        title="录像详情"
+      >
+        {selectedRecording && (
+          <div className="space-y-4">
+            <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg flex items-center justify-center">
+              <div className="text-center">
+                <Play className="w-16 h-16 mx-auto text-white/30 mb-2" />
+                <p className="text-white/50 text-sm">点击播放视频</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500">录像标题</label>
+                <p className="font-medium">{selectedRecording.title}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">案件类型</label>
+                <p className="font-medium">{selectedRecording.caseType}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">录制教室</label>
+                <p className="font-medium">
+                  {classrooms.find((c) => c.id === selectedRecording.classroomId)?.name || '未知'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">录制日期</label>
+                <p className="font-medium">{selectedRecording.recordDate || selectedRecording.recordedAt?.slice(0, 10)}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">时长</label>
+                <p className="font-medium">
+                  {Math.floor(selectedRecording.duration / 60)}小时{selectedRecording.duration % 60}分钟
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setSelectedRecording(null)}>
+                关闭
+              </Button>
+              <Button onClick={() => {
+                setSelectedRecording(null);
+                navigate('/recordings');
+              }}>
+                <ExternalLink className="w-4 h-4 mr-1" />
+                前往录像归档
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

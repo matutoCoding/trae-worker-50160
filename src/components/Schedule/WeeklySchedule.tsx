@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Users, MapPin, Plus, BarChart3, CheckCircle, Clock3 } from 'lucide-react';
-import { format, addWeeks, startOfWeek, isSameDay } from 'date-fns';
+import { ChevronLeft, ChevronRight, Clock, Users, MapPin, Plus, BarChart3, CheckCircle, Clock3, TrendingUp, CalendarDays } from 'lucide-react';
+import { format, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { useAppStore } from '@/store';
 import { TIME_SLOT_CONFIG, type TimeSlot, type Booking, type Classroom } from '@/types';
@@ -11,10 +11,13 @@ import { Modal } from '@/components/ui/Modal';
 
 export function WeeklySchedule() {
   const [currentWeek, setCurrentWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [hoveredBooking, setHoveredBooking] = useState<Booking | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
   const [bookingPurpose, setBookingPurpose] = useState('');
+  const [statsFilter, setStatsFilter] = useState<'all' | 'approved' | 'pending'>('all');
 
   const bookings = useAppStore((s) => s.bookings);
   const classrooms = useAppStore((s) => s.classrooms);
@@ -27,6 +30,15 @@ export function WeeklySchedule() {
   const checkConflict = useAppStore((s) => s.checkConflict);
 
   const weekDates = getWeekDates(currentWeek);
+  const monthDates = useMemo(() => {
+    return eachDayOfInterval({
+      start: startOfMonth(currentMonth),
+      end: endOfMonth(currentMonth),
+    });
+  }, [currentMonth]);
+  
+  const displayDates = viewMode === 'week' ? weekDates : monthDates;
+  
   const timeSlots = Object.entries(TIME_SLOT_CONFIG) as unknown as [TimeSlot, typeof TIME_SLOT_CONFIG[TimeSlot]][];
 
   const filteredBookings = useMemo(() => {
@@ -37,14 +49,16 @@ export function WeeklySchedule() {
     });
   }, [bookings, selectedClassroom]);
 
-  const weekStats = useMemo(() => {
-    const weekDateStrs = weekDates.map((d) => formatDate(d));
-    const totalSlotsPerWeek = 7 * 7; // 7天 × 7时段
+  function computeStats(dates: Date[], crs: Classroom[], bks: Booking[]) {
+    const totalSlotsPerDay = 7;
+    const totalMinutesPerDay = totalSlotsPerDay * 90;
+    const totalMinutes = dates.length * totalMinutesPerDay;
 
-    return classrooms.map((classroom) => {
-      const classroomBookings = bookings.filter((b) => {
+    const classroomStats = crs.map((classroom) => {
+      const classroomBookings = bks.filter((b) => {
         if (b.classroomId !== classroom.id) return false;
-        if (!weekDateStrs.includes(b.date)) return false;
+        const dateStrs = dates.map((d) => formatDate(d));
+        if (!dateStrs.includes(b.date)) return false;
         if (b.status === 'cancelled' || b.status === 'rejected') return false;
         return true;
       });
@@ -61,10 +75,13 @@ export function WeeklySchedule() {
         }
       });
 
-      const totalMinutes = totalSlotsPerWeek * 90;
-      const usedMinutes = approvedMinutes + pendingMinutes;
+      const usedMinutes = statsFilter === 'approved' ? approvedMinutes
+        : statsFilter === 'pending' ? pendingMinutes
+        : approvedMinutes + pendingMinutes;
+
       const freeMinutes = Math.max(0, totalMinutes - usedMinutes);
       const utilizationRate = totalMinutes > 0 ? (usedMinutes / totalMinutes) * 100 : 0;
+      const freeRate = totalMinutes > 0 ? (freeMinutes / totalMinutes) * 100 : 0;
 
       return {
         classroom,
@@ -72,10 +89,57 @@ export function WeeklySchedule() {
         pendingMinutes,
         freeMinutes,
         utilizationRate,
+        freeRate,
         bookingCount: classroomBookings.length,
       };
     });
-  }, [classrooms, bookings, weekDates]);
+
+    const dailyTrend = dates.map((date) => {
+      const dateStr = formatDate(date);
+      const dayBookings = bks.filter((b) => {
+        if (b.date !== dateStr) return false;
+        if (b.status === 'cancelled' || b.status === 'rejected') return false;
+        if (selectedClassroom && b.classroomId !== selectedClassroom) return false;
+        return true;
+      });
+
+      let approvedMin = 0;
+      let pendingMin = 0;
+      dayBookings.forEach((b) => {
+        const minutes = getSlotDurationMinutes(b.startSlot, b.endSlot);
+        if (b.status === 'approved' || b.status === 'completed') {
+          approvedMin += minutes;
+        } else if (b.status === 'pending') {
+          pendingMin += minutes;
+        }
+      });
+      
+      const usedMin = statsFilter === 'approved' ? approvedMin
+        : statsFilter === 'pending' ? pendingMin
+        : approvedMin + pendingMin;
+
+      return {
+        date,
+        dateStr,
+        approvedMinutes: approvedMin,
+        pendingMinutes: pendingMin,
+        usedMinutes: usedMin,
+        rate: totalMinutesPerDay > 0 ? (usedMin / totalMinutesPerDay) * 100 : 0,
+      };
+    });
+
+    return { classroomStats, dailyTrend, totalMinutes };
+  }
+
+  const weekStatsData = useMemo(() => {
+    return computeStats(weekDates, classrooms, bookings);
+  }, [classrooms, bookings, weekDates, statsFilter, selectedClassroom]);
+
+  const monthStatsData = useMemo(() => {
+    return computeStats(monthDates, classrooms, bookings);
+  }, [classrooms, bookings, monthDates, statsFilter, selectedClassroom]);
+
+  const activeStats = viewMode === 'week' ? weekStatsData : monthStatsData;
 
   function formatMinutes(minutes: number): string {
     const hours = Math.floor(minutes / 60);
@@ -83,6 +147,36 @@ export function WeeklySchedule() {
     if (hours === 0) return `${mins}分钟`;
     if (mins === 0) return `${hours}小时`;
     return `${hours}小时${mins}分钟`;
+  }
+
+  function handlePrev() {
+    if (viewMode === 'week') {
+      setCurrentWeek(subWeeks(currentWeek, 1));
+    } else {
+      setCurrentMonth(subMonths(currentMonth, 1));
+    }
+  }
+
+  function handleNext() {
+    if (viewMode === 'week') {
+      setCurrentWeek(addWeeks(currentWeek, 1));
+    } else {
+      setCurrentMonth(addMonths(currentMonth, 1));
+    }
+  }
+
+  function handleTrendDayClick(date: Date) {
+    if (viewMode === 'month') {
+      setCurrentWeek(startOfWeek(date, { weekStartsOn: 1 }));
+      setViewMode('week');
+    }
+    setSelectedDate(date);
+  }
+
+  function handleClassroomStatClick(classroomId: string) {
+    setSelectedClassroom(
+      selectedClassroom === classroomId ? null : classroomId
+    );
   }
 
   function getBookingsForCell(date: Date, slot: TimeSlot): Booking[] {
@@ -181,22 +275,46 @@ export function WeeklySchedule() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-2xl font-bold text-primary-800 font-serif">教室排期</h2>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('week')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                viewMode === 'week' ? 'bg-white shadow text-primary-700' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              按周
+            </button>
+            <button
+              onClick={() => setViewMode('month')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                viewMode === 'month' ? 'bg-white shadow text-primary-700' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              按月
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setCurrentWeek(addWeeks(currentWeek, -1))}
+              onClick={handlePrev}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="font-medium text-primary-700 min-w-[200px] text-center">
-              {format(currentWeek, 'yyyy年M月d日', { locale: zhCN })} -{' '}
-              {format(addWeeks(currentWeek, 1), 'M月d日', { locale: zhCN })}
+            <span className="font-medium text-primary-700 min-w-[220px] text-center">
+              {viewMode === 'week' ? (
+                <>
+                  {format(currentWeek, 'yyyy年M月d日', { locale: zhCN })} -{' '}
+                  {format(addWeeks(currentWeek, 1), 'M月d日', { locale: zhCN })}
+                </>
+              ) : (
+                format(currentMonth, 'yyyy年M月', { locale: zhCN })
+              )}
             </span>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
+              onClick={handleNext}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -204,6 +322,15 @@ export function WeeklySchedule() {
         </div>
 
         <div className="flex items-center gap-3">
+          <select
+            value={statsFilter}
+            onChange={(e) => setStatsFilter(e.target.value as 'all' | 'approved' | 'pending')}
+            className="input-field w-40"
+          >
+            <option value="all">全部状态</option>
+            <option value="approved">仅已批准</option>
+            <option value="pending">仅待审批</option>
+          </select>
           <select
             value={selectedClassroom || ''}
             onChange={(e) => setSelectedClassroom(e.target.value || null)}
@@ -241,17 +368,25 @@ export function WeeklySchedule() {
       </div>
 
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-primary font-serif">本周资源利用概览</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold text-primary font-serif">
+              {viewMode === 'week' ? '本周' : '本月'}资源利用概览
+            </h3>
+          </div>
+          <div className="text-xs text-gray-500">
+            {statsFilter === 'all' && '显示全部状态'}
+            {statsFilter === 'approved' && '仅显示已批准'}
+            {statsFilter === 'pending' && '仅显示待审批'}
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {weekStats.map((stat) => (
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {activeStats.classroomStats.map((stat) => (
             <div
               key={stat.classroom.id}
-              onClick={() => setSelectedClassroom(
-                selectedClassroom === stat.classroom.id ? null : stat.classroom.id
-              )}
+              onClick={() => handleClassroomStatClick(stat.classroom.id)}
               className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md ${
                 selectedClassroom === stat.classroom.id
                   ? 'border-primary bg-primary/5'
@@ -274,13 +409,13 @@ export function WeeklySchedule() {
               <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
                 <div
                   className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
-                  style={{ width: `${(stat.approvedMinutes / (7 * 7 * 90)) * 100}%` }}
+                  style={{ width: `${(stat.approvedMinutes / activeStats.totalMinutes) * 100}%` }}
                 />
                 <div
                   className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500 -mt-2"
                   style={{ 
-                    width: `${(stat.pendingMinutes / (7 * 7 * 90)) * 100}%`,
-                    marginLeft: `${(stat.approvedMinutes / (7 * 7 * 90)) * 100}%`
+                    width: `${(stat.pendingMinutes / activeStats.totalMinutes) * 100}%`,
+                    marginLeft: `${(stat.approvedMinutes / activeStats.totalMinutes) * 100}%`
                   }}
                 />
               </div>
@@ -294,12 +429,93 @@ export function WeeklySchedule() {
                   <Clock3 className="w-3 h-3 text-amber-500" />
                   <span className="text-gray-600">{formatMinutes(stat.pendingMinutes)}</span>
                 </div>
-                <div className="text-gray-400 text-right">
-                  空闲 {formatMinutes(stat.freeMinutes)}
+                <div className="text-right">
+                  <span className={`font-medium ${
+                    stat.freeRate > 50 ? 'text-sky-600' : 'text-gray-500'
+                  }`}>
+                    空闲 {stat.freeRate.toFixed(0)}%
+                  </span>
                 </div>
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h4 className="text-sm font-medium text-gray-700">
+              {viewMode === 'week' ? '每日' : '每日'}利用趋势
+              {selectedClassroom && (
+                <span className="ml-2 text-xs text-primary">
+                  （{classrooms.find((c) => c.id === selectedClassroom)?.name}）
+                </span>
+              )}
+            </h4>
+          </div>
+          <div className="flex items-end gap-1 h-28 overflow-x-auto pb-2">
+            {activeStats.dailyTrend.map((day) => {
+              const isSelected = isSameDay(day.date, selectedDate);
+              const isToday = isSameDay(day.date, new Date());
+              return (
+                <div
+                  key={day.dateStr}
+                  onClick={() => handleTrendDayClick(day.date)}
+                  className={`flex flex-col items-center min-w-[32px] flex-1 cursor-pointer group ${
+                    viewMode === 'month' && !isSameMonth(day.date, currentMonth) ? 'opacity-30' : ''
+                  }`}
+                  title={`${day.dateStr}: 利用率 ${day.rate.toFixed(0)}%`}
+                >
+                  <div className="w-full flex-1 flex items-end justify-center mb-1">
+                    <div className="w-full max-w-[20px] flex flex-col justify-end relative" style={{ height: '80px' }}>
+                      <div
+                        className="w-full bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t transition-all group-hover:from-emerald-600 group-hover:to-emerald-500"
+                        style={{ 
+                          height: `${Math.max(2, (day.approvedMinutes / (7 * 90)) * 100)}%`,
+                        }}
+                      />
+                      {day.pendingMinutes > 0 && (
+                        <div
+                          className="w-full bg-gradient-to-t from-amber-500 to-amber-400 rounded-t mt-0.5 transition-all group-hover:from-amber-600 group-hover:to-amber-500"
+                          style={{ 
+                            height: `${Math.max(2, (day.pendingMinutes / (7 * 90)) * 100)}%`,
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className={`text-[10px] ${
+                    isSelected ? 'text-primary font-bold' : 
+                    isToday ? 'text-emerald-600 font-medium' : 'text-gray-400'
+                  }`}>
+                    {viewMode === 'week' 
+                      ? format(day.date, 'EEE', { locale: zhCN })
+                      : format(day.date, 'd')
+                    }
+                  </div>
+                  {isSelected && (
+                    <div className="w-1 h-1 rounded-full bg-primary mt-0.5" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-end gap-4 text-xs text-gray-500 mt-2">
+            <div className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded bg-emerald-400" />
+              已批准
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded bg-amber-400" />
+              待审批
+            </div>
+            {viewMode === 'month' && (
+              <div className="text-sky-600">
+                <CalendarDays className="w-3 h-3 inline mr-1" />
+                点击某日跳转周视图
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -311,12 +527,19 @@ export function WeeklySchedule() {
                 <th className="p-3 text-left font-medium w-28 sticky left-0 bg-primary-800 z-10">
                   时段
                 </th>
-                {weekDates.map((date) => (
+                {displayDates.map((date) => (
                   <th
                     key={date.toISOString()}
-                    className="p-3 text-center font-medium min-w-[140px]"
+                    className={`p-3 text-center font-medium min-w-[140px] ${
+                      viewMode === 'month' && !isSameMonth(date, currentMonth) ? 'opacity-50' : ''
+                    }`}
                   >
                     <div className="font-serif">{formatDateDisplay(date)}</div>
+                    {isSameDay(date, new Date()) && (
+                      <span className="inline-block mt-0.5 text-[10px] px-1.5 py-0.5 bg-gold text-white rounded-full">
+                        今天
+                      </span>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -330,17 +553,18 @@ export function WeeklySchedule() {
                       {config.start}-{config.end}
                     </div>
                   </td>
-                  {weekDates.map((date) => {
+                  {displayDates.map((date) => {
                     const bookings = getBookingsForCell(date, slot);
                     const status = getCellStatus(date, slot);
                     const firstBookings = bookings.filter((b) => isFirstSlotOfBooking(b, slot));
+                    const dimmed = viewMode === 'month' && !isSameMonth(date, currentMonth);
 
                     return (
                       <td
                         key={`${date.toISOString()}-${slot}`}
-                        className={`p-1 border-r border-gray-100 ${getCellClasses(status)}`}
-                        onClick={() => handleCellClick(date, slot)}
-                        onMouseEnter={() => bookings[0] && setHoveredBooking(bookings[0])}
+                        className={`p-1 border-r border-gray-100 ${getCellClasses(status)} ${dimmed ? 'bg-gray-50/50' : ''}`}
+                        onClick={() => !dimmed && handleCellClick(date, slot)}
+                        onMouseEnter={() => !dimmed && bookings[0] && setHoveredBooking(bookings[0])}
                         onMouseLeave={() => setHoveredBooking(null)}
                       >
                         {firstBookings.map((booking) => {
@@ -369,7 +593,7 @@ export function WeeklySchedule() {
                             </div>
                           );
                         })}
-                        {bookings.length === 0 && bookingSlots.includes(slot) && (
+                        {bookings.length === 0 && bookingSlots.includes(slot) && !dimmed && (
                           <div className="h-10 rounded-md bg-primary-500/30 border-2 border-dashed border-primary-500 flex items-center justify-center text-xs text-primary-700">
                             已选择
                           </div>
