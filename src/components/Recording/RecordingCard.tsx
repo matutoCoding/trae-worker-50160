@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Video, MapPin, Clock, Calendar, Play, Edit3, Trash2, Plus } from 'lucide-react';
+import { Video, MapPin, Clock, Calendar, Play, Edit3, Trash2, Plus, ExternalLink, AlertTriangle, XCircle } from 'lucide-react';
 import type { Recording } from '@/types';
 import { useAppStore } from '@/store';
 import { formatDateDisplay, formatDateTime } from '@/utils/time';
-import { Badge } from '@/components/ui/Badge';
+import { Badge, StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { caseTypes } from '@/data/mockData';
 import { generateId } from '@/utils/time';
+import BookingCard from '@/components/Booking/BookingCard';
 
 interface RecordingCardProps {
   recording: Recording;
@@ -15,6 +16,7 @@ interface RecordingCardProps {
 
 export function RecordingCard({ recording }: RecordingCardProps) {
   const [showDetail, setShowDetail] = useState(false);
+  const [showBookingDetail, setShowBookingDetail] = useState(false);
   const classrooms = useAppStore((s) => s.classrooms);
   const bookings = useAppStore((s) => s.bookings);
 
@@ -100,11 +102,49 @@ export function RecordingCard({ recording }: RecordingCardProps) {
           </div>
 
           {booking && (
-            <div className="p-4 bg-primary-50 rounded-lg border border-primary-100">
-              <h5 className="font-medium text-primary-800 mb-2">关联预约</h5>
-              <div className="text-sm text-primary-600">
-                <p>{booking.className}</p>
-                <p className="text-primary-500">{booking.purpose}</p>
+            <div className={`p-4 rounded-lg border ${
+              booking.status === 'cancelled' || booking.status === 'rejected'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-primary-50 border-primary-100'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className={`font-medium flex items-center gap-2 ${
+                  booking.status === 'cancelled' || booking.status === 'rejected'
+                    ? 'text-red-800'
+                    : 'text-primary-800'
+                }`}>
+                  {booking.status === 'cancelled' || booking.status === 'rejected'
+                    ? <AlertTriangle className="w-4 h-4" />
+                    : <Calendar className="w-4 h-4" />
+                  }
+                  关联预约
+                  <StatusBadge status={booking.status} />
+                </h5>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowBookingDetail(true)}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  查看详情
+                </Button>
+              </div>
+              <div className={`text-sm ${
+                booking.status === 'cancelled' || booking.status === 'rejected'
+                  ? 'text-red-600'
+                  : 'text-primary-600'
+              }`}>
+                <p className="font-medium">{booking.className}</p>
+                <p>{booking.purpose || booking.caseName}</p>
+                <p className="text-xs mt-1 opacity-75">
+                  {booking.date} · 第{booking.startSlot}-{booking.endSlot}节
+                </p>
+                {(booking.status === 'cancelled' || booking.status === 'rejected') && (
+                  <p className="text-xs mt-2 text-red-500 flex items-center gap-1">
+                    <XCircle className="w-3 h-3" />
+                    {booking.status === 'cancelled' ? '该预约已取消' : '该预约已被驳回'}，归档资料请留意与实际使用情况核对
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -116,6 +156,21 @@ export function RecordingCard({ recording }: RecordingCardProps) {
           </div>
         </div>
       </Modal>
+
+      {booking && (
+        <Modal
+          isOpen={showBookingDetail}
+          onClose={() => setShowBookingDetail(false)}
+          title="关联预约详情"
+          size="xl"
+        >
+          <BookingCard
+            booking={booking}
+            viewMode="grid"
+            selectable={false}
+          />
+        </Modal>
+      )}
     </>
   );
 }

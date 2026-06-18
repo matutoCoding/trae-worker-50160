@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "@/store";
 import { canApprove, getCurrentApprovalStep } from "@/utils/approval";
 import ApprovalCard from "@/components/Approval/ApprovalCard";
 import { Button } from "@/components/ui/Button";
-import { CheckCircle, Clock, XCircle, Filter, Users, Archive, UserCheck, ShieldAlert, TrendingUp } from "lucide-react";
+import { CheckCircle, Clock, XCircle, Filter, Users, Archive, UserCheck, ShieldAlert, TrendingUp, Download, CalendarRange, UserSearch } from "lucide-react";
 import type { Booking } from "@/types";
+import { formatDate, formatDateTime } from "@/utils/time";
 
 type TabId = "pending" | "approved" | "rejected" | "archive";
 type ArchiveGroup = "teacher" | "admin" | "escalated" | "all";
@@ -13,6 +14,9 @@ export default function ApprovalPage() {
   const { bookings, currentUser, users } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabId>("pending");
   const [archiveGroup, setArchiveGroup] = useState<ArchiveGroup>("all");
+  const [dateRangeStart, setDateRangeStart] = useState("");
+  const [dateRangeEnd, setDateRangeEnd] = useState("");
+  const [processorFilter, setProcessorFilter] = useState<string>("all");
 
   const pendingBookings = bookings.filter(
     (b) => b.status === "pending" && canApprove(b, currentUser)
@@ -38,9 +42,38 @@ export default function ApprovalPage() {
     (b) => b.status === "approved" || b.status === "rejected" || b.status === "completed"
   );
 
+  const processors = useMemo(() => {
+    const processorMap = new Map<string, { id: string; name: string; role: string }>();
+    archiveBookings.forEach((b) => {
+      const processor = getFinalProcessor(b);
+      if (processor) {
+        const step = [...b.approvalSteps].reverse().find(
+          (s) => s.status === "approved" || s.status === "rejected"
+        );
+        if (step?.approverId && !processorMap.has(step.approverId)) {
+          processorMap.set(step.approverId, {
+            id: step.approverId,
+            name: processor.name,
+            role: processor.role,
+          });
+        }
+      }
+    });
+    return Array.from(processorMap.values());
+  }, [archiveBookings]);
+
   const filteredArchive = archiveBookings.filter((b) => {
-    if (archiveGroup === "all") return true;
-    return getArchiveGroup(b) === archiveGroup;
+    if (archiveGroup !== "all" && getArchiveGroup(b) !== archiveGroup) return false;
+    if (dateRangeStart && b.date < dateRangeStart) return false;
+    if (dateRangeEnd && b.date > dateRangeEnd) return false;
+    if (processorFilter !== "all") {
+      const processor = getFinalProcessor(b);
+      const step = [...b.approvalSteps].reverse().find(
+        (s) => s.status === "approved" || s.status === "rejected"
+      );
+      if (!step || step.approverId !== processorFilter) return false;
+    }
+    return true;
   });
 
   const teacherCount = archiveBookings.filter((b) => getArchiveGroup(b) === "teacher").length;
@@ -93,6 +126,56 @@ export default function ApprovalPage() {
     { id: "admin" as const, label: "管理员二级", count: adminCount, icon: Users },
     { id: "escalated" as const, label: "升级处理", count: escalatedCount, icon: TrendingUp },
   ];
+
+  function exportArchive() {
+    const rows = [
+      ["预约用途", "班级", "使用日期", "使用时段", "处理层级", "是否升级处理", "处理人", "处理人角色", "处理意见", "最终结果", "处理时间"],
+    ];
+
+    filteredArchive.forEach((b) => {
+      const result = getFinalResult(b);
+      const processor = getFinalProcessor(b);
+      const group = getArchiveGroup(b);
+      const step = [...b.approvalSteps].reverse().find(
+        (s) => s.status === "approved" || s.status === "rejected"
+      );
+      const slotRange = b.startSlot === b.endSlot
+        ? `第${b.startSlot}节`
+        : `第${b.startSlot}节-第${b.endSlot}节`;
+      rows.push([
+        b.purpose || b.caseName || "",
+        b.className || "",
+        b.date || "",
+        slotRange,
+        getGroupName(group),
+        group === "escalated" ? "是" : "否",
+        processor?.name || "",
+        processor?.role || "",
+        processor?.comment || "无意见",
+        result.label,
+        step?.processedAt ? formatDateTime(step.processedAt) : "",
+      ]);
+    });
+
+    const csvContent = rows.map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n");
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateStr = new Date().toISOString().split("T")[0];
+    link.download = `审批归档清单_${dateStr}.csv`;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function clearArchiveFilters() {
+    setDateRangeStart("");
+    setDateRangeEnd("");
+    setProcessorFilter("all");
+  }
 
   const getDisplayBookings = () => {
     switch (activeTab) {
@@ -155,27 +238,84 @@ export default function ApprovalPage() {
       </div>
 
       {activeTab === "archive" && (
-        <div className="card p-2">
-          <div className="flex gap-2 flex-wrap">
-            {archiveTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setArchiveGroup(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm transition-all ${
-                  archiveGroup === tab.id
-                    ? "bg-primary-100 text-primary-700 font-medium shadow-sm"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                <tab.icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-                <span className={`text-xs ${archiveGroup === tab.id ? "text-primary-600" : "text-gray-400"}`}>
-                  ({tab.count})
-                </span>
-              </button>
-            ))}
+        <>
+          <div className="card p-2">
+            <div className="flex gap-2 flex-wrap">
+              {archiveTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setArchiveGroup(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm transition-all ${
+                    archiveGroup === tab.id
+                      ? "bg-primary-100 text-primary-700 font-medium shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                  <span className={`text-xs ${archiveGroup === tab.id ? "text-primary-600" : "text-gray-400"}`}>
+                    ({tab.count})
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+
+          <div className="card p-4">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="flex items-center gap-2">
+                  <CalendarRange className="w-4 h-4 text-gray-400" />
+                  <input
+                    type="date"
+                    value={dateRangeStart}
+                    onChange={(e) => setDateRangeStart(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="开始日期"
+                  />
+                  <span className="text-gray-400">至</span>
+                  <input
+                    type="date"
+                    value={dateRangeEnd}
+                    onChange={(e) => setDateRangeEnd(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="结束日期"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <UserSearch className="w-4 h-4 text-gray-400" />
+                  <select
+                    value={processorFilter}
+                    onChange={(e) => setProcessorFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="all">全部处理人</option>
+                    {processors.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}（{p.role}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {(dateRangeStart || dateRangeEnd || processorFilter !== "all") && (
+                  <button
+                    onClick={clearArchiveFilters}
+                    className="text-xs text-primary/60 hover:text-primary font-medium"
+                  >
+                    清除筛选
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">共 {filteredArchive.length} 条记录</span>
+                <Button size="sm" onClick={exportArchive}>
+                  <Download className="w-4 h-4 mr-1" />
+                  导出清单
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {displayBookings.length === 0 ? (

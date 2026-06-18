@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAppStore } from "@/store";
 import BookingCard from "@/components/Booking/BookingCard";
 import { Button } from "@/components/ui/Button";
@@ -10,11 +11,24 @@ import { formatSlotRange } from "@/utils/time";
 
 export default function BookingListPage() {
   const { bookings, currentUser, users, classrooms, batchCancelBookings } = useAppStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBatchCancelModal, setShowBatchCancelModal] = useState(false);
+
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch) {
+      setSearchTerm(urlSearch);
+    }
+  }, [searchParams]);
+
+  function clearUrlFilter() {
+    setSearchParams({});
+    setSearchTerm("");
+  }
 
   const statusOptions = [
     { value: "all", label: "全部" },
@@ -162,6 +176,19 @@ export default function BookingListPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            {searchParams.get("search") && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-gold/10 rounded-lg">
+                <span className="text-xs text-gold font-medium">
+                  已筛选：{searchParams.get("search")}
+                </span>
+                <button
+                  onClick={clearUrlFilter}
+                  className="text-xs text-gold hover:text-gold/80 font-medium"
+                >
+                  清除
+                </button>
+              </div>
+            )}
             <div className="flex items-center bg-gray-100 rounded-lg p-1">
               <button
                 className={`p-2 rounded ${viewMode === "grid" ? "bg-white shadow" : ""}`}

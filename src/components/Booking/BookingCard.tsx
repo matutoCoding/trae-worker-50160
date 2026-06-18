@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap, CheckSquare, Square, Video, Play, ExternalLink } from 'lucide-react';
+import { Clock, MapPin, User, Calendar, Scissors, XCircle, Zap, CheckSquare, Square, Video, Play, ExternalLink, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Booking, TimeSlot, Recording } from '@/types';
 import { TIME_SLOT_CONFIG } from '@/types';
@@ -335,29 +335,66 @@ export default function BookingCard({
           )}
 
           {recordings.filter((r) => r.bookingId === booking.id).length > 0 && (
-            <div className="p-4 bg-sky-50 rounded-lg border border-sky-100">
-              <h5 className="font-medium text-sky-800 mb-3 flex items-center gap-2">
+            <div className={`p-4 rounded-lg border ${
+              booking.status === 'cancelled' || booking.status === 'rejected'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-sky-50 border-sky-100'
+            }`}>
+              <h5 className={`font-medium mb-3 flex items-center gap-2 ${
+                booking.status === 'cancelled' || booking.status === 'rejected'
+                  ? 'text-red-800'
+                  : 'text-sky-800'
+              }`}>
                 <Video className="w-4 h-4" />
                 关联庭审录像
+                {(booking.status === 'cancelled' || booking.status === 'rejected') && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full ml-2 ${
+                    booking.status === 'cancelled' ? 'bg-gray-200 text-gray-600' : 'bg-red-100 text-red-600'
+                  }`}>
+                    预约{booking.status === 'cancelled' ? '已取消' : '已驳回'}
+                  </span>
+                )}
                 <button
                   onClick={() => navigate('/recordings')}
-                  className="ml-auto text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1"
+                  className={`ml-auto text-xs flex items-center gap-1 ${
+                    booking.status === 'cancelled' || booking.status === 'rejected'
+                      ? 'text-red-600 hover:text-red-800'
+                      : 'text-sky-600 hover:text-sky-800'
+                  }`}
                 >
                   去录像页
                   <ExternalLink className="w-3 h-3" />
                 </button>
               </h5>
+              {(booking.status === 'cancelled' || booking.status === 'rejected') && (
+                <p className="text-xs text-red-600 mb-3 pb-2 border-b border-red-100 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  该预约已{booking.status === 'cancelled' ? '取消' : '驳回'}，下方录像为归档历史资料，请留意与实际使用情况核对
+                </p>
+              )}
               <div className="space-y-2">
                 {recordings
                   .filter((r) => r.bookingId === booking.id)
                   .map((rec) => (
                     <div
                       key={rec.id}
-                      className="flex items-center justify-between p-2 bg-white rounded border border-sky-100"
+                      className={`flex items-center justify-between p-2 rounded border ${
+                        booking.status === 'cancelled' || booking.status === 'rejected'
+                          ? 'bg-white/60 border-red-100 opacity-75'
+                          : 'bg-white border-sky-100'
+                      }`}
                     >
                       <div>
-                        <p className="text-sm font-medium text-sky-900">{rec.title}</p>
-                        <p className="text-xs text-sky-600">
+                        <p className={`text-sm font-medium ${
+                          booking.status === 'cancelled' || booking.status === 'rejected'
+                            ? 'text-gray-600 line-through'
+                            : 'text-sky-900'
+                        }`}>{rec.title}</p>
+                        <p className={`text-xs ${
+                          booking.status === 'cancelled' || booking.status === 'rejected'
+                            ? 'text-gray-400'
+                            : 'text-sky-600'
+                        }`}>
                           {rec.caseType} · {Math.floor(rec.duration / 60)}小时{rec.duration % 60}分钟
                           {rec.recordDate && ` · ${rec.recordDate}`}
                         </p>

@@ -53,6 +53,8 @@ export function WeeklySchedule() {
     const totalSlotsPerDay = 7;
     const totalMinutesPerDay = totalSlotsPerDay * 90;
     const totalMinutes = dates.length * totalMinutesPerDay;
+    const totalClassroomCount = crs.length;
+    const schoolWideTotalMinutes = dates.length * totalMinutesPerDay * totalClassroomCount;
 
     const classroomStats = crs.map((classroom) => {
       const classroomBookings = bks.filter((b) => {
@@ -118,17 +120,45 @@ export function WeeklySchedule() {
         : statsFilter === 'pending' ? pendingMin
         : approvedMin + pendingMin;
 
+      const denominator = selectedClassroom
+        ? totalMinutesPerDay
+        : totalMinutesPerDay * totalClassroomCount;
+
       return {
         date,
         dateStr,
         approvedMinutes: approvedMin,
         pendingMinutes: pendingMin,
         usedMinutes: usedMin,
-        rate: totalMinutesPerDay > 0 ? (usedMin / totalMinutesPerDay) * 100 : 0,
+        rate: denominator > 0 ? (usedMin / denominator) * 100 : 0,
+        denominator,
       };
     });
 
-    return { classroomStats, dailyTrend, totalMinutes };
+    let schoolWideStats = null;
+    if (!selectedClassroom && totalClassroomCount > 0) {
+      let totalApprovedMin = 0;
+      let totalPendingMin = 0;
+      classroomStats.forEach((s) => {
+        totalApprovedMin += s.approvedMinutes;
+        totalPendingMin += s.pendingMinutes;
+      });
+      const totalUsed = statsFilter === 'approved' ? totalApprovedMin
+        : statsFilter === 'pending' ? totalPendingMin
+        : totalApprovedMin + totalPendingMin;
+      const totalFree = Math.max(0, schoolWideTotalMinutes - totalUsed);
+      schoolWideStats = {
+        totalApprovedMinutes: totalApprovedMin,
+        totalPendingMinutes: totalPendingMin,
+        totalUsedMinutes: totalUsed,
+        totalFreeMinutes: totalFree,
+        totalMinutes: schoolWideTotalMinutes,
+        utilizationRate: schoolWideTotalMinutes > 0 ? (totalUsed / schoolWideTotalMinutes) * 100 : 0,
+        freeRate: schoolWideTotalMinutes > 0 ? (totalFree / schoolWideTotalMinutes) * 100 : 0,
+      };
+    }
+
+    return { classroomStats, dailyTrend, totalMinutes, schoolWideStats };
   }
 
   const weekStatsData = useMemo(() => {
@@ -382,6 +412,60 @@ export function WeeklySchedule() {
           </div>
         </div>
 
+        {activeStats.schoolWideStats && (
+          <div className="mb-4 p-4 bg-gradient-to-r from-primary/5 to-gold/5 rounded-xl border-2 border-primary/20">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-primary" />
+                <h4 className="font-semibold text-primary font-serif">全校总览</h4>
+                <span className="text-xs text-gray-500">共 {classrooms.length} 个教室</span>
+              </div>
+              <div className={`text-xl font-bold ${
+                activeStats.schoolWideStats.utilizationRate > 60 ? 'text-emerald-600' :
+                activeStats.schoolWideStats.utilizationRate > 30 ? 'text-amber-600' : 'text-gray-500'
+              }`}>
+                {activeStats.schoolWideStats.utilizationRate.toFixed(0)}%
+                <span className="text-xs font-normal text-gray-500 ml-1">综合利用率</span>
+              </div>
+            </div>
+            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden mb-3">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                style={{ width: `${(activeStats.schoolWideStats.totalApprovedMinutes / activeStats.schoolWideStats.totalMinutes) * 100}%` }}
+              />
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500 -mt-3"
+                style={{ 
+                  width: `${(activeStats.schoolWideStats.totalPendingMinutes / activeStats.schoolWideStats.totalMinutes) * 100}%`,
+                  marginLeft: `${(activeStats.schoolWideStats.totalApprovedMinutes / activeStats.schoolWideStats.totalMinutes) * 100}%`
+                }}
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-4 text-xs">
+              <div>
+                <span className="text-gray-500">已批准时长</span>
+                <p className="font-medium text-emerald-600">{formatMinutes(activeStats.schoolWideStats.totalApprovedMinutes)}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">待审批时长</span>
+                <p className="font-medium text-amber-600">{formatMinutes(activeStats.schoolWideStats.totalPendingMinutes)}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">总可用时长</span>
+                <p className="font-medium text-gray-700">{formatMinutes(activeStats.schoolWideStats.totalMinutes)}</p>
+              </div>
+              <div className="text-right">
+                <span className="text-gray-500">空闲占比</span>
+                <p className={`font-medium ${
+                  activeStats.schoolWideStats.freeRate > 50 ? 'text-sky-600' : 'text-gray-600'
+                }`}>
+                  空闲 {activeStats.schoolWideStats.freeRate.toFixed(0)}%
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {activeStats.classroomStats.map((stat) => (
             <div
@@ -445,18 +529,18 @@ export function WeeklySchedule() {
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4 text-primary" />
             <h4 className="text-sm font-medium text-gray-700">
-              {viewMode === 'week' ? '每日' : '每日'}利用趋势
-              {selectedClassroom && (
-                <span className="ml-2 text-xs text-primary">
-                  （{classrooms.find((c) => c.id === selectedClassroom)?.name}）
-                </span>
-              )}
+              {selectedClassroom ? `${classrooms.find((c) => c.id === selectedClassroom)?.name} ` : '全校'}
+              每日利用趋势
+              <span className="ml-2 text-xs text-gray-500">
+                （按{selectedClassroom ? '单教室' : `${classrooms.length}个教室总和`}口径计算）
+              </span>
             </h4>
           </div>
           <div className="flex items-end gap-1 h-28 overflow-x-auto pb-2">
             {activeStats.dailyTrend.map((day) => {
               const isSelected = isSameDay(day.date, selectedDate);
               const isToday = isSameDay(day.date, new Date());
+              const trendDenominator = day.denominator || (7 * 90);
               return (
                 <div
                   key={day.dateStr}
@@ -471,14 +555,14 @@ export function WeeklySchedule() {
                       <div
                         className="w-full bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t transition-all group-hover:from-emerald-600 group-hover:to-emerald-500"
                         style={{ 
-                          height: `${Math.max(2, (day.approvedMinutes / (7 * 90)) * 100)}%`,
+                          height: `${Math.max(2, (day.approvedMinutes / trendDenominator) * 100)}%`,
                         }}
                       />
                       {day.pendingMinutes > 0 && (
                         <div
                           className="w-full bg-gradient-to-t from-amber-500 to-amber-400 rounded-t mt-0.5 transition-all group-hover:from-amber-600 group-hover:to-amber-500"
                           style={{ 
-                            height: `${Math.max(2, (day.pendingMinutes / (7 * 90)) * 100)}%`,
+                            height: `${Math.max(2, (day.pendingMinutes / trendDenominator) * 100)}%`,
                           }}
                         />
                       )}

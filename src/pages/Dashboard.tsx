@@ -1,5 +1,7 @@
 import { useAppStore } from "@/store";
 import { useBookingStats } from "@/hooks/useOvertimeCheck";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Calendar,
   Clock,
@@ -9,13 +11,18 @@ import {
   XCircle,
   TrendingUp,
   Video,
+  GraduationCap,
+  BookOpen,
+  ArrowRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { getSlotDurationMinutes } from "@/utils/time";
 
 export default function Dashboard() {
   const { currentUser, bookings, classrooms } = useAppStore();
   const stats = useBookingStats();
+  const navigate = useNavigate();
 
   const statCards = [
     {
@@ -167,6 +174,124 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <GraduationCap className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-bold text-primary font-serif">班级预约排行</h2>
+            </div>
+            <button
+              onClick={() => navigate('/bookings')}
+              className="text-xs text-primary/60 hover:text-primary flex items-center gap-1 transition-colors"
+            >
+              查看全部
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {useMemo(() => {
+              const classMap: Record<string, { count: number; minutes: number }> = {};
+              bookings.forEach((b) => {
+                if (b.status === 'cancelled' || b.status === 'rejected') return;
+                if (!b.className) return;
+                if (!classMap[b.className]) {
+                  classMap[b.className] = { count: 0, minutes: 0 };
+                }
+                classMap[b.className].count += 1;
+                classMap[b.className].minutes += getSlotDurationMinutes(b.startSlot, b.endSlot);
+              });
+              return Object.entries(classMap)
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 5)
+                .map(([className, data], index) => (
+                  <div
+                    key={className}
+                    onClick={() => navigate(`/bookings?search=${encodeURIComponent(className)}`)}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-primary/5 transition-colors group"
+                  >
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      index === 0 ? 'bg-gold text-white' :
+                      index === 1 ? 'bg-gray-400 text-white' :
+                      index === 2 ? 'bg-amber-600 text-white' :
+                      'bg-gray-200 text-gray-600'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-800 group-hover:text-primary transition-colors">{className}</p>
+                      <p className="text-xs text-gray-500">
+                        累计时长 {Math.floor(data.minutes / 60)}小时{data.minutes % 60}分钟
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-primary">{data.count}</p>
+                      <p className="text-xs text-gray-500">次预约</p>
+                    </div>
+                  </div>
+                ));
+            }, [bookings, navigate])}
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-bold text-primary font-serif">用途时长分析</h2>
+            </div>
+            <button
+              onClick={() => navigate('/bookings')}
+              className="text-xs text-primary/60 hover:text-primary flex items-center gap-1 transition-colors"
+            >
+              查看全部
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {useMemo(() => {
+              const purposeMap: Record<string, { minutes: number; count: number }> = {};
+              bookings.forEach((b) => {
+                if (b.status === 'cancelled' || b.status === 'rejected') return;
+                const purpose = b.purpose || b.caseName || '未填写';
+                if (!purposeMap[purpose]) {
+                  purposeMap[purpose] = { minutes: 0, count: 0 };
+                }
+                purposeMap[purpose].minutes += getSlotDurationMinutes(b.startSlot, b.endSlot);
+                purposeMap[purpose].count += 1;
+              });
+              const maxMinutes = Math.max(...Object.values(purposeMap).map((v) => v.minutes), 1);
+              return Object.entries(purposeMap)
+                .sort((a, b) => b[1].minutes - a[1].minutes)
+                .slice(0, 5)
+                .map(([purpose, data], index) => (
+                  <div
+                    key={purpose}
+                    onClick={() => navigate(`/bookings?search=${encodeURIComponent(purpose)}`)}
+                    className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-primary/5 transition-colors group"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-medium text-gray-800 group-hover:text-primary transition-colors text-sm truncate">
+                        {purpose}
+                      </p>
+                      <p className="text-sm font-bold text-primary ml-2 whitespace-nowrap">
+                        {Math.floor(data.minutes / 60)}h{data.minutes % 60}m
+                      </p>
+                    </div>
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all"
+                        style={{ width: `${(data.minutes / maxMinutes) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{data.count}次预约</p>
+                  </div>
+                ));
+            }, [bookings, navigate])}
           </div>
         </div>
       </div>
